@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>R34 MFD // MEXT Stage Tracker</title>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --mfd-bg: #030508;
+            --mfd-text: #ff1a1a;
+            --mfd-glow: rgba(255, 26, 26, 0.5);
+            --dash-plastic: #0f0f0f;
+            --btn-base: #1a1a1a;
+            --telemetry-cyan: #A80000;
+            --checkpoint-color: #888;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+
+        body, html {
+            height: 100vh; width: 100vw;
+            background-color: #000;
+            overflow: hidden;
+            font-family: 'Share Tech Mono', monospace;
+            perspective: 1000px; 
+        }
+
+        /* --- WINDSHIELD SCENE --- */
+        .windshield {
+            position: absolute; top: -5%; left: -5%;
+            width: 110%; height: 110%;
+            background: linear-gradient(rgba(0,0,0,0.3), rgba(0,0,0,0.7)), 
+                        url('Gemini_Generated_Image_833lzf833lzf833l.png'); 
+            background-size: cover; background-position: center;
+            z-index: 1; transition: transform 0.1s ease-out;
+        }
+
+        /* --- DASHBOARD RIG --- */
+        .dash-rig {
+            position: absolute; bottom: 0; left: 0;
+            width: 100vw; height: 100vh; z-index: 10;
+            display: flex; justify-content: center; align-items: flex-end;
+            transform-style: preserve-3d; transform-origin: bottom center;
+            pointer-events: none; 
+        }
+
+        .dashboard-base {
+            position: absolute; bottom: -15vh;
+            width: 130%; height: 50vh; background: var(--dash-plastic);
+            background-image: repeating-linear-gradient(45deg, #0a0a0a 0, #0a0a0a 2px, #111 2px, #111 4px);
+            border-top: 8px solid #050505;
+            transform: rotateX(30deg) translateZ(-50px);
+            box-shadow: 0 -40px 100px rgba(0,0,0,1);
+            z-index: 5; border-radius: 50% 50% 0 0 / 15% 15% 0 0;
+        }
+
+        .cockpit-wrap {
+            position: relative; width: 95vw; height: 500px;
+            display: flex; justify-content: space-between; align-items: flex-end;
+            z-index: 20; transform-style: preserve-3d; padding-bottom: 50px; 
+        }
+
+        /* --- LEFT: TELEMETRY PANEL (MEXT FOCUSED) --- */
+        .telemetry-panel {
+            width: 280px; height: 360px; /* Slightly widened for the timeline */
+            background: rgba(5, 5, 5, 0.85); border: 2px solid #222;
+            border-left: 4px solid var(--telemetry-cyan); border-radius: 5px; padding: 15px;
+            transform: rotateY(20deg) translateY(-20px) translateZ(80px); 
+            box-shadow: inset 0 0 20px #000, 10px 10px 30px rgba(0,0,0,0.8);
+            display: flex; flex-direction: column; pointer-events: auto;
+        }
+
+        .tel-header {
+            color: var(--telemetry-cyan); font-family: 'Orbitron', sans-serif; font-size: 0.9rem;
+            border-bottom: 1px solid var(--telemetry-cyan); padding-bottom: 5px; margin-bottom: 15px;
+            text-shadow: 0 0 5px rgba(0, 229, 255, 0.5);
+        }
+
+        .vital-group { margin-bottom: 15px; }
+        .vital-label { color: #888; font-size: 0.7rem; margin-bottom: 5px; letter-spacing: 2px; }
+        .vital-bar-bg { width: 100%; height: 6px; background: #111; border: 1px solid #333; }
+        .vital-fill { height: 100%; background: var(--telemetry-cyan); box-shadow: 0 0 5px var(--telemetry-cyan); }
+
+        /* --- MEXT STAGE MAP --- */
+        .track-map {
+            margin-top: auto; height: 130px; border: 1px dashed #333; position: relative;
+            background: radial-gradient(circle, #111 10%, transparent 10%); background-size: 10px 10px;
+        }
+        
+        /* The main timeline route */
+        .route-line {
+            position: absolute; top: 50%; left: 5%; width: 90%; height: 2px; background: #444;
+        }
+
+        /* Checkpoint Nodes & Tags */
+        .checkpoint {
+            position: absolute; top: 50%; width: 8px; height: 8px; background: var(--checkpoint-color);
+            border-radius: 50%; transform: translate(-50%, -50%); border: 2px solid #111; z-index: 2;
+        }
+        .checkpoint.cleared { background: var(--telemetry-cyan); box-shadow: 0 0 5px var(--telemetry-cyan); }
+        
+        .cp-label {
+            position: absolute; color: #777; font-size: 0.5rem; text-align: center;
+            transform: translateX(-50%); width: 45px; line-height: 1.2; font-weight: bold;
+        }
+        /* Staggered labels so they don't overlap */
+        .cp-label.top { top: 15%; }
+        .cp-label.bottom { top: 62%; }
+        .cp-label.active { color: #fff; text-shadow: 0 0 5px #fff; }
+
+        /* The Car */
+        #course-position {
+            position: absolute; top: 50%; left: 5%; width: 14px; height: 8px;
+            background: var(--mfd-text); box-shadow: 0 0 10px var(--mfd-text);
+            transform: translate(-50%, -50%); transition: left 0.5s ease-out; z-index: 10;
+        }
+
+        /* Dynamic Objective Readout */
+        .objective-box {
+            background: #111; border: 1px solid #333; padding: 5px; margin-bottom: 15px;
+        }
+        .obj-title { color: #555; font-size: 0.6rem; letter-spacing: 1px; }
+        .obj-target { color: var(--telemetry-cyan); font-size: 0.75rem; font-weight: bold; margin-top: 3px; }
+
+        /* --- CENTER: MFD --- */
+        .center-console {
+            width: 440px; height: 400px; background: #121212; border: 2px solid #222; border-radius: 10px;
+            box-shadow: 0 -10px 40px rgba(0,0,0,0.9), inset 0 0 15px #000;
+            transform: translateZ(120px); display: flex; flex-direction: column; align-items: center; padding: 15px; pointer-events: auto;
+        }
+
+        .gtr-badge {
+            margin-bottom: 10px;
+            text-shadow: 0 5px 10px #000;
+            height: 35px; display: flex; align-items: center;
+            transform: scale(0.1);
+        }
+
+        .mfd-screen {
+            width: 100%; height: 230px; background: var(--mfd-bg); border: 3px solid #000; border-radius: 5px;
+            box-shadow: inset 0 0 20px #000, 0 0 10px var(--mfd-glow); padding: 12px;
+            display: flex; flex-direction: column; position: relative; overflow: hidden;
+        }
+
+        .mfd-screen::after {
+            content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+            background-size: 100% 4px; pointer-events: none;
+        }
+
+        .screen-header {
+            display: flex; justify-content: space-between; color: var(--mfd-text); font-family: 'Orbitron', sans-serif;
+            border-bottom: 1px solid var(--mfd-text); padding-bottom: 5px; margin-bottom: 10px; font-size: 0.9rem; text-shadow: 0 0 5px var(--mfd-glow);
+        }
+
+        .task-list { flex-grow: 1; overflow-y: auto; color: #ddd; scrollbar-width: none; z-index: 2; }
+        .task-item { display: flex; align-items: center; margin-bottom: 10px; font-size: 0.8rem; cursor: pointer; transition: 0.2s; }
+        .task-item input {
+            appearance: none; width: 14px; height: 14px; border: 1px solid var(--mfd-text); background: transparent;
+            margin-right: 12px; flex-shrink: 0; border-radius: 2px;
+        }
+        .task-item input:checked { background: var(--mfd-text); box-shadow: 0 0 5px var(--mfd-text); }
+        .task-item input:checked + span { color: #555; text-decoration: line-through; }
+
+        .nav-controls { width: 100%; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: auto; }
+        .btn-col { display: flex; flex-direction: column; align-items: center; }
+        .nav-label { font-size: 0.55rem; color: #666; margin-bottom: 5px; letter-spacing: 1px; }
+        .btn-group { display: flex; width: 100%; justify-content: space-between; background: #080808; border-radius: 3px; border: 1px solid #1a1a1a; }
+        .nav-btn {
+            background: var(--btn-base); color: #888; border: none; padding: 8px 0; width: 50%; font-family: 'Orbitron', sans-serif;
+            font-size: 0.65rem; cursor: pointer; box-shadow: inset 0 1px 1px rgba(255,255,255,0.05); transition: 0.1s;
+        }
+        .nav-btn:active { transform: translateY(1px); color: var(--mfd-text); }
+        .nav-btn:first-child { border-right: 1px solid #111; }
+
+        /* --- RIGHT: ANALOG GAUGES --- */
+        .gauge-cluster {
+            display: flex; gap: 20px;
+            transform: rotateY(-20deg) translateY(-20px) translateZ(80px); 
+            z-index: 20;
+        }
+
+        .gauge {
+            width: 180px; height: 180px; background: #050505; border-radius: 50%; border: 6px solid #151515;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.8), inset 0 0 20px #000; position: relative;
+        }
+        .gauge::before {
+            content: ''; position: absolute; top: 2px; left: 2px; width: calc(100% - 4px); height: calc(100% - 4px);
+            border-radius: 50%; border: 1px solid #333;
+        }
+        .needle {
+            position: absolute; bottom: 50%; left: 50%; width: 3px; height: 42%; background: #fff;
+            transform-origin: bottom center; transform: rotate(-130deg); transition: transform 0.4s cubic-bezier(0.25, 1.5, 0.5, 1); z-index: 10;
+        }
+        .needle::after {
+            content: ''; position: absolute; bottom: -6px; left: -6px; width: 15px; height: 15px; background: var(--mfd-text); border-radius: 50%;
+        }
+
+        .gauge-label { position: absolute; width: 100%; text-align: center; bottom: 35px; color: #777; font-size: 0.6rem; letter-spacing: 2px; }
+        .dial-num { position: absolute; color: #555; font-size: 0.65rem; font-weight: bold; }
+        .dial-num.min { bottom: 15%; left: 15%; }
+        .dial-num.max { bottom: 15%; right: 15%; }
+
+    </style>
+</head>
+<body>
+
+    <div class="windshield" id="bg-scene"></div>
+
+    <div class="dash-rig" id="pov-rig">
+        <div class="dashboard-base"></div>
+
+        <div class="cockpit-wrap">
+            
+            <div class="telemetry-panel">
+                <div class="tel-header">MEXT PROTOCOL // ACTIVE</div>
+                
+                <div class="objective-box">
+                    <div class="obj-title">IMMEDIATE DOCUMENT OBJECTIVE:</div>
+                    <div class="obj-target" id="mext-target">CALCULATING...</div>
+                </div>
+                
+                <div class="track-map">
+                    <div class="vital-label" style="position:absolute; top:5px; left:5px;">DOCUMENT STAGE MAP</div>
+                    <div class="route-line"></div>
+                    
+                    <div class="checkpoint" style="left: 5%;" id="cp-1"></div>
+                    <div class="cp-label bottom" style="left: 5%;">MAR<br>PREP</div>
+                    
+                    <div class="checkpoint" style="left: 24%;" id="cp-2"></div>
+                    <div class="cp-label top" style="left: 24%;" id="lb-2">E.APR<br>APP FORM</div>
+                    
+                    <div class="checkpoint" style="left: 43%;" id="cp-3"></div>
+                    <div class="cp-label bottom" style="left: 43%;" id="lb-3">L.APR<br>IITM/DOCS</div>
+                    
+                    <div class="checkpoint" style="left: 62%;" id="cp-4"></div>
+                    <div class="cp-label top" style="left: 62%;" id="lb-4">E.MAY<br>MEDICAL</div>
+                    
+                    <div class="checkpoint" style="left: 81%;" id="cp-5"></div>
+                    <div class="cp-label bottom" style="left: 81%;" id="lb-5">M.MAY<br>SUBMIT</div>
+                    
+                    <div class="checkpoint" style="left: 95%;" id="cp-6"></div>
+                    <div class="cp-label top" style="left: 95%;" id="lb-6">L.JUN<br>EXAM/INT</div>
+
+                    <div id="course-position"></div>
+                </div>
+            </div>
+
+            <div class="center-console">
+                <div class="gtr-badge">
+                    <img src="pngegg.png" alt="GTR" id="gtr-logo-img">
+                </div>
+               
+                <div class="mfd-screen">
+                    <div class="screen-header">
+                        <span id="disp-month" style="color:#fff;">MARCH</span>
+                        <span id="disp-subj">PHYSICS</span>
+                        <span id="disp-week">W1</span>
+                    </div>
+                    <div class="task-list" id="task-container"></div>
+                </div>
+
+                <div class="nav-controls">
+                    <div class="btn-col">
+                        <div class="nav-label">MONTH</div>
+                        <div class="btn-group">
+                            <button class="nav-btn" onclick="navMonth(-1)">◀</button>
+                            <button class="nav-btn" onclick="navMonth(1)">▶</button>
+                        </div>
+                    </div>
+                    <div class="btn-col">
+                        <div class="nav-label">WEEK</div>
+                        <div class="btn-group">
+                            <button class="nav-btn" onclick="navWeek(-1)">◀</button>
+                            <button class="nav-btn" onclick="navWeek(1)">▶</button>
+                        </div>
+                    </div>
+                    <div class="btn-col">
+                        <div class="nav-label">SUBJECT</div>
+                        <div class="btn-group">
+                            <button class="nav-btn" onclick="navSubj(-1)">◀</button>
+                            <button class="nav-btn" onclick="navSubj(1)">▶</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="gauge-cluster">
+                <div class="gauge">
+                    <div class="dial-num min">0</div><div class="dial-num max">MAX</div>
+                    <div class="needle" id="speed-needle"></div>
+                    <div class="gauge-label">SYLLABUS BOOST</div>
+                </div>
+                <div class="gauge">
+                    <div class="dial-num min">MAR</div><div class="dial-num max">JUL</div>
+                    <div class="needle" id="time-needle"></div>
+                    <div class="gauge-label">EXAM COUNTDOWN</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+<script>
+    // --- 1. MEXT DEADLINE ENGINE ---
+    // Sets real-world deadlines to calculate what the immediate next goal is.
+    const mextDeadlines = [
+        { date: new Date("April 10, 2026"), title: "APPLICATION FORM (Early April)", cpIdx: 2 },
+        { date: new Date("April 25, 2026"), title: "DOCUMENT ATTESTATION & IITM (Late April)", cpIdx: 3 },
+        { date: new Date("May 10, 2026"), title: "MEDICAL CERTIFICATE (Early May)", cpIdx: 4 },
+        { date: new Date("May 20, 2026"), title: "FINAL DOC CHECK & SUBMISSION (Mid May)", cpIdx: 5 },
+        { date: new Date("June 30, 2026"), title: "MEXT EXAM & INTERVIEW (Late June/July)", cpIdx: 6 }
+    ];
+
+    function updateMextTelemetry() {
+        const now = new Date();
+        const targetDisplay = document.getElementById('mext-target');
+        let nextGoal = mextDeadlines.find(d => now <= d.date);
+
+        if (nextGoal) {
+            targetDisplay.innerText = nextGoal.title;
+            // Highlight the active label
+            document.querySelectorAll('.cp-label').forEach(lbl => lbl.classList.remove('active'));
+            document.getElementById(`lb-${nextGoal.cpIdx}`).classList.add('active');
+        } else {
+            targetDisplay.innerText = "AWAITING MEXT RESULTS";
+            targetDisplay.style.color = "#00ff00";
+        }
+    }
+
+    // --- 2. SYLLABUS DATA ---
+    const months = ["MARCH", "APRIL", "MAY", "JUNE"];
+    const subjects = ["PHYSICS", "CHEMISTRY", "MATHEMATICS"];
+    
+    const syllabus = {
+        "MARCH": {
+            "PHYSICS": { 1: ["Kinematics", "Newton's Laws"], 2: ["Work", "Energy", "Power"], 3: ["Circular Motion", "Gravitation", "Friction"], 4: ["Hydrostatics", "Fluid Dynamics"] },
+            "CHEMISTRY": { 1: ["Stoichiometry", "Periodic Table"], 2: ["Atomic Structure", "Chemical Bonding"], 3: ["Equilibrium", "Kinetics"], 4: ["Thermodynamics", "Gas Law"] },
+            "MATHEMATICS": { 1: ["Linear Equations", "Quadratic Equations"], 2: ["Matrices", "Logarithms"], 3: ["Sequences", "Series"], 4: ["Trigonometry", "Inverse Trigonometry"] }
+        },
+        "APRIL": {
+            "PHYSICS": { 1: ["Thermodynamics", "PVT Cycles"], 2: ["Electrostatics", "Electric Circuits"], 3: ["Electrodynamics", "Magnetism", "EM Waves"], 4: ["Reflection", "Refraction", "Lenses"] },
+            "CHEMISTRY": { 1: ["Hydrocarbons", "Isomerism"], 2: ["Alcohols", "Phenols", "Ether"], 3: ["Carbonyls", "Carboxylic Acids"], 4: ["Polymers", "Organic Reactions"] },
+            "MATHEMATICS": { 1: ["Limits", "Continuity"], 2: ["Differentiation"], 3: ["Integration"], 4: ["Differential Equations"] }
+        },
+        "MAY": {
+            "PHYSICS": { 1: ["Waves", "SHM", "Doppler Effect", "Interference"], 2: ["Nuclear Physics", "Modern Physics", "Semiconductors"], 3: ["Mock Test 1"], 4: ["Mock Test 2"] },
+            "CHEMISTRY": { 1: ["Inorganic Blocks"], 2: ["Qualitative Analysis"], 3: ["Mock Test 1"], 4: ["Mock Test 2"] },
+            "MATHEMATICS": { 1: ["3d Geometry", "Vectors"], 2: ["Conic Sections"], 3: ["Mock Test 1"], 4: ["Mock Test 2"] }
+        },
+        "JUNE": { 
+            "PHYSICS": { 1: ["Mock Test 3"], 2: ["Formula", "Concepts", "REVISION"] },
+            "CHEMISTRY": { 1: ["Mock Test 3"], 2: ["Mechanism Review", "Chemical REview", "REVISION"] },
+            "MATHEMATICS": { 1: ["Mock Test 3"], 2: ["Algebra","Trigonometry", "Calculus Targets", "Coord Geometry", "Formula", "REVISION"] }
+        }
+    };
+
+    let curMonth = 0; let curSubj = 0; let curWeek = 1;
+    const progressState = {}; 
+    
+    let totalTasks = 0;
+    for(let m in syllabus) {
+        for(let s in syllabus[m]) {
+            for(let w in syllabus[m][s]) { totalTasks += syllabus[m][s][w].length; }
+        }
+    }
+
+    const dMonth = document.getElementById('disp-month');
+    const dSubj = document.getElementById('disp-subj');
+    const dWeek = document.getElementById('disp-week');
+    const taskContainer = document.getElementById('task-container');
+    const speedNeedle = document.getElementById('speed-needle');
+    const timeNeedle = document.getElementById('time-needle');
+    const coursePos = document.getElementById('course-position');
+
+    function renderMFD() {
+        const mName = months[curMonth];
+        const sName = subjects[curSubj];
+        const maxWeeks = Object.keys(syllabus[mName][sName]).length;
+        if (curWeek > maxWeeks) curWeek = maxWeeks;
+
+        dMonth.innerText = mName; dSubj.innerText = sName; dWeek.innerText = `W${curWeek}`;
+        
+        const tasks = syllabus[mName][sName][curWeek] || [];
+        taskContainer.innerHTML = ''; 
+        
+        if(tasks.length === 0) {
+            taskContainer.innerHTML = '<div style="color:#555; text-align:center; margin-top:20px;">NO DATA</div>';
+            return;
+        }
+
+        tasks.forEach((task, index) => {
+            const stateKey = `${mName}-${sName}-${curWeek}-${index}`;
+            const isChecked = progressState[stateKey] ? 'checked' : '';
+            const html = `<label class="task-item"><input type="checkbox" data-key="${stateKey}" ${isChecked}><span>${task}</span></label>`;
+            taskContainer.insertAdjacentHTML('beforeend', html);
+        });
+
+        document.querySelectorAll('.task-item input').forEach(box => {
+            box.addEventListener('change', (e) => {
+                progressState[e.target.dataset.key] = e.target.checked;
+                updateSpeedometer();
+            });
+        });
+    }
+
+    function navMonth(dir) { curMonth = (curMonth + dir + months.length) % months.length; renderMFD(); }
+    function navSubj(dir) { curSubj = (curSubj + dir + subjects.length) % subjects.length; renderMFD(); }
+    function navWeek(dir) {
+        const maxW = Object.keys(syllabus[months[curMonth]][subjects[curSubj]]).length;
+        curWeek += dir;
+        if(curWeek < 1) curWeek = maxW; if(curWeek > maxW) curWeek = 1;
+        renderMFD();
+    }
+
+    // --- 3. PROGRESS MAP UPDATER ---
+    function updateSpeedometer() {
+        const completed = Object.values(progressState).filter(val => val === true).length;
+        const percent = totalTasks > 0 ? (completed / totalTasks) : 0;
+        
+        // Needle sweep: -130 to +130
+        const degrees = (percent * 260) - 130;
+        speedNeedle.style.transform = `rotate(${degrees}deg)`;
+
+        // Move the physical car along the MEXT timeline (maps 0-100% completion to 5%-95% width)
+        coursePos.style.left = `${5 + (percent * 90)}%`;
+
+        // Light up checkpoints as the car passes them
+        const cpPositions = [5, 24, 43, 62, 81, 95];
+        cpPositions.forEach((pos, idx) => {
+            const cpElement = document.getElementById(`cp-${idx + 1}`);
+            if (cpElement) {
+                if ((5 + (percent * 90)) >= pos) {
+                    cpElement.classList.add('cleared');
+                } else {
+                    cpElement.classList.remove('cleared');
+                }
+            }
+        });
+    }
+
+    function updateTimeGauge() {
+        const start = new Date("March 1, 2026").getTime();
+        const end = new Date("July 10, 2026").getTime(); // Pushed to July to cover late exams
+        const now = new Date().getTime();
+        
+        let progress = (now - start) / (end - start);
+        progress = Math.max(0, Math.min(1, progress));
+
+        const degrees = (progress * 260) - 130;
+        timeNeedle.style.transform = `rotate(${degrees}deg)`;
+    }
+
+    const rig = document.getElementById('pov-rig');
+    const bg = document.getElementById('bg-scene');
+
+    document.addEventListener('mousemove', (e) => {
+        const xPos = (e.clientX / window.innerWidth - 0.5);
+        const yPos = (e.clientY / window.innerHeight - 0.5);
+        rig.style.transform = `rotateX(${yPos * 8}deg) rotateY(${xPos * -12}deg)`;
+        bg.style.transform = `translate(${xPos * 25}px, ${yPos * 25}px) scale(1.05)`;
+    });
+
+    renderMFD();
+    updateSpeedometer();
+    updateTimeGauge();
+    updateMextTelemetry(); // Check MEXT deadlines
+    setInterval(() => {
+        updateTimeGauge();
+        updateMextTelemetry();
+    }, 60000); 
+    // 1. Function to Save Progress
+    function saveProgress() {
+        localStorage.setItem('mext_study_progress', JSON.stringify(progressState));
+    }
+    
+    // 2. Function to Load Progress (Call this once when the page starts)
+    function loadProgress() {
+        const saved = localStorage.getItem('mext_study_progress');
+        if (saved) {
+            // Merge saved data into our active state
+            Object.assign(progressState, JSON.parse(saved));
+            updateSpeedometer(); // Update gauges to match saved data
+            renderMFD();         // Redraw the screen with checkmarks
+        }
+    }
+    
+    // 3. Update your renderMFD checkbox logic to trigger a save
+    // Find the part where you add the 'change' listener and add saveProgress():
+    box.addEventListener('change', (e) => {
+        progressState[e.target.dataset.key] = e.target.checked;
+        updateSpeedometer();
+        saveProgress(); // <--- Add this line!
+    });
+    
+    // 4. Finally, call loadProgress() at the very bottom of your script
+    loadProgress();
+</script>
+
+</body>
+</html>
